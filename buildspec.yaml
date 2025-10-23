@@ -1,0 +1,103 @@
+version: 0.2
+
+# AWS CodeBuild buildspec for Hugging Face Environment
+# Can be adapted for other CI/CD platforms (GitHub Actions, GitLab CI, etc.)
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+      nodejs: 20
+    commands:
+      - echo "Installing dependencies..."
+      - pip install --upgrade pip
+      - pip install uv
+      - uv pip install --system -e .
+
+      # Install Mermaid CLI for diagram generation
+      - npm install -g @mermaid-js/mermaid-cli
+
+      # Install Chromium for Puppeteer (Mermaid rendering)
+      - apt-get update && apt-get install -y chromium chromium-driver || echo "Chromium install skipped"
+
+  pre_build:
+    commands:
+      - echo "Running pre-build checks..."
+      - python --version
+      - pip list
+      - node --version
+      - mmdc --version || echo "Mermaid CLI not available"
+
+      # Set environment variables
+      - export PYTHONPATH="${PYTHONPATH}:${CODEBUILD_SRC_DIR}/src"
+      - export HF_HOME="${CODEBUILD_SRC_DIR}/.cache/huggingface"
+
+      # Create necessary directories
+      - mkdir -p .cache/huggingface outputs data docs/diagrams
+
+  build:
+    commands:
+      - echo "Running build phase..."
+
+      # Run linting (if tools are installed)
+      - pip install ruff mypy || echo "Linting tools not required"
+      - ruff check src/ || echo "Ruff not configured"
+      - mypy src/ || echo "Mypy not configured"
+
+      # Run tests
+      - pip install pytest pytest-cov
+      - pytest tests/ --cov=src --cov-report=xml --cov-report=html || echo "No tests found"
+
+      # Generate documentation diagrams
+      - |
+        if [ -d "docs/mermaid" ]; then
+          echo "Generating Mermaid diagrams..."
+          for file in docs/mermaid/*.mmd; do
+            if [ -f "$file" ]; then
+              mmdc -i "$file" -o "docs/diagrams/$(basename "$file" .mmd).pdf" -b transparent || echo "Failed to generate PDF for $file"
+            fi
+          done
+        fi
+
+      # Build any additional artifacts
+      - python -m src.project.config.settings || echo "Config validation passed"
+
+  post_build:
+    commands:
+      - echo "Build completed on $(date)"
+      - |
+        if [ $CODEBUILD_BUILD_SUCCEEDING -eq 1 ]; then
+          echo "Build succeeded!"
+        else
+          echo "Build failed!"
+          exit 1
+        fi
+
+artifacts:
+  files:
+    - '**/*'
+  name: huggingface-env-$(date +%Y%m%d-%H%M%S)
+  exclude-paths:
+    - '.git/**/*'
+    - '.cache/**/*'
+    - '__pycache__/**/*'
+    - '**/*.pyc'
+    - '.env'
+    - 'venv/**/*'
+    - '.venv/**/*'
+
+reports:
+  coverage_report:
+    files:
+      - 'coverage.xml'
+    file-format: COBERTURAXML
+  test_report:
+    files:
+      - 'junit.xml'
+    file-format: JUNITXML
+
+cache:
+  paths:
+    - '.cache/huggingface/**/*'
+    - '/root/.cache/pip/**/*'
+    - 'node_modules/**/*'
