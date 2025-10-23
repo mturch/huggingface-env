@@ -1,0 +1,23 @@
+[project]
+name = "huggingface-env"
+version = "0.1.0"
+description = "A ready-to-run Hugging Face environment for macOS (M4/M-series)"
+requires-python = ">=3.10"
+
+dependencies = [
+    "transformers>=4.45.0",
+    "datasets>=3.0.0",
+    "huggingface_hub[cli]>=0.25.0",
+    "accelerate>=1.0.0",
+    "torch>=2.5.0",
+    "safetensors>=0.4.5",
+    "sentencepiece",
+    "evaluate",
+    "scikit-learn",
+    "numpy",
+    "pandas"
+]
+
+[tool.uv]
+# keep lockfile out of VCS
+exclude = ["*.pyc", "__pycache__", ".DS_Store"]
